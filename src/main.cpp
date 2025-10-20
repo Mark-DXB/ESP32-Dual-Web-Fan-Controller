@@ -14,84 +14,127 @@ const char* ap_ssid = "ESP32-FanController";
 const char* ap_password = "fancontrol123";
 bool ap_mode_active = false;
 
-// Fan Control GPIO Pins (from original project)
-#define FAN_PWM_GPIO            2   // Fan PWM output pin
-#define FAN_TACHO_GPIO          18  // Fan Tacho input pin
+// Dual Fan Control GPIO Pins
+#define FAN1_PWM_GPIO           2   // Fan 1 (Intake) PWM output pin
+#define FAN1_TACHO_GPIO         18  // Fan 1 (Intake) Tacho input pin
+#define FAN2_PWM_GPIO           4   // Fan 2 (Exhaust) PWM output pin  
+#define FAN2_TACHO_GPIO         19  // Fan 2 (Exhaust) Tacho input pin
 
 // PWM Configuration
 #define PWM_FREQUENCY           25000  // 25kHz PWM frequency
 #define PWM_RESOLUTION          8      // 8-bit resolution (0-255)
-#define PWM_CHANNEL             0      // LEDC channel
+#define FAN1_PWM_CHANNEL        0      // LEDC channel for Fan 1
+#define FAN2_PWM_CHANNEL        1      // LEDC channel for Fan 2
 
 // Global variables
 AsyncWebServer server(80);
-volatile int pulse_count = 0;
-volatile int current_rpm = 0;
-volatile int current_pwm_percent = 0;
-volatile unsigned long last_rpm_measurement = 0;
 
-// Interrupt handler for tacho pulses
-void IRAM_ATTR tacho_pulse_isr() {
-    pulse_count++;
+// Fan 1 (Intake) variables
+volatile int fan1_pulse_count = 0;
+volatile int fan1_current_rpm = 0;
+volatile int fan1_current_pwm_percent = 0;
+volatile unsigned long fan1_last_rpm_measurement = 0;
+
+// Fan 2 (Exhaust) variables  
+volatile int fan2_pulse_count = 0;
+volatile int fan2_current_rpm = 0;
+volatile int fan2_current_pwm_percent = 0;
+volatile unsigned long fan2_last_rpm_measurement = 0;
+
+// Interrupt handlers for tacho pulses
+void IRAM_ATTR fan1_tacho_isr() {
+    fan1_pulse_count++;
 }
 
-// ====== FAN PWM CONTROL ======
+void IRAM_ATTR fan2_tacho_isr() {
+    fan2_pulse_count++;
+}
+
+// ====== DUAL FAN PWM CONTROL ======
 void init_fan_pwm() {
-    Serial.printf("Fan PWM initializing (GPIO %d)\n", FAN_PWM_GPIO);
+    Serial.println("Initializing Dual Fan PWM Control...");
     
-    // Configure LED Control for PWM
-    ledcSetup(PWM_CHANNEL, PWM_FREQUENCY, PWM_RESOLUTION);
-    ledcAttachPin(FAN_PWM_GPIO, PWM_CHANNEL);
+    // Fan 1 (Intake) PWM setup
+    Serial.printf("Fan 1 (Intake) PWM: GPIO %d, Channel %d\n", FAN1_PWM_GPIO, FAN1_PWM_CHANNEL);
+    ledcSetup(FAN1_PWM_CHANNEL, PWM_FREQUENCY, PWM_RESOLUTION);
+    ledcAttachPin(FAN1_PWM_GPIO, FAN1_PWM_CHANNEL);
+    ledcWrite(FAN1_PWM_CHANNEL, 0);  // Start at 0%
     
-    // Start at 0% speed
-    ledcWrite(PWM_CHANNEL, 0);
+    // Fan 2 (Exhaust) PWM setup  
+    Serial.printf("Fan 2 (Exhaust) PWM: GPIO %d, Channel %d\n", FAN2_PWM_GPIO, FAN2_PWM_CHANNEL);
+    ledcSetup(FAN2_PWM_CHANNEL, PWM_FREQUENCY, PWM_RESOLUTION);
+    ledcAttachPin(FAN2_PWM_GPIO, FAN2_PWM_CHANNEL);
+    ledcWrite(FAN2_PWM_CHANNEL, 0);  // Start at 0%
     
-    Serial.println("Fan PWM initialized (25kHz, 8-bit)");
+    Serial.println("Dual Fan PWM initialized (25kHz, 8-bit)");
 }
 
-void set_fan_speed(int percent) {
+void set_fan1_speed(int percent) {
     if (percent < 0) percent = 0;
     if (percent > 100) percent = 100;
     
-    int duty_cycle = (percent * 255) / 100;  // Convert percentage to 8-bit value
-    ledcWrite(PWM_CHANNEL, duty_cycle);
+    int duty_cycle = (percent * 255) / 100;
+    ledcWrite(FAN1_PWM_CHANNEL, duty_cycle);
     
-    current_pwm_percent = percent;
-    Serial.printf("Fan speed set to %d%% (duty=%d)\n", percent, duty_cycle);
+    fan1_current_pwm_percent = percent;
+    Serial.printf("Fan 1 (Intake) speed: %d%% (duty=%d)\n", percent, duty_cycle);
 }
 
-// ====== TACHO RPM MEASUREMENT ======
+void set_fan2_speed(int percent) {
+    if (percent < 0) percent = 0;
+    if (percent > 100) percent = 100;
+    
+    int duty_cycle = (percent * 255) / 100;
+    ledcWrite(FAN2_PWM_CHANNEL, duty_cycle);
+    
+    fan2_current_pwm_percent = percent;
+    Serial.printf("Fan 2 (Exhaust) speed: %d%% (duty=%d)\n", percent, duty_cycle);
+}
+
+// ====== DUAL TACHO RPM MEASUREMENT ======
 void init_tacho_input() {
-    Serial.printf("Tacho input initializing (GPIO %d)\n", FAN_TACHO_GPIO);
+    Serial.println("Initializing Dual Tacho inputs...");
     
-    // Configure GPIO as input with pull-up
-    pinMode(FAN_TACHO_GPIO, INPUT_PULLUP);
+    // Fan 1 (Intake) Tacho setup
+    Serial.printf("Fan 1 (Intake) Tacho: GPIO %d\n", FAN1_TACHO_GPIO);
+    pinMode(FAN1_TACHO_GPIO, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(FAN1_TACHO_GPIO), fan1_tacho_isr, RISING);
     
-    // Attach interrupt for rising edge (tacho pulse)
-    attachInterrupt(digitalPinToInterrupt(FAN_TACHO_GPIO), tacho_pulse_isr, RISING);
+    // Fan 2 (Exhaust) Tacho setup
+    Serial.printf("Fan 2 (Exhaust) Tacho: GPIO %d\n", FAN2_TACHO_GPIO);
+    pinMode(FAN2_TACHO_GPIO, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(FAN2_TACHO_GPIO), fan2_tacho_isr, RISING);
     
-    Serial.println("Tacho measurement ready (2 pulses per revolution)");
+    Serial.println("Dual Tacho measurement ready (2 pulses per revolution)");
 }
 
 void measure_rpm() {
-    static unsigned long last_measurement_time = 0;
     unsigned long current_time = millis();
     
-    // Measure RPM every second
-    if (current_time - last_measurement_time >= 1000) {
-        // Get pulse count and reset counter
+    // Measure Fan 1 RPM every second
+    if (current_time - fan1_last_rpm_measurement >= 1000) {
         noInterrupts();
-        int pulses = pulse_count;
-        pulse_count = 0;
+        int fan1_pulses = fan1_pulse_count;
+        fan1_pulse_count = 0;
         interrupts();
         
-        // Convert pulse count to RPM (2 pulses per revolution, measured over 1 second)
-        current_rpm = (pulses * 60) / 2;
+        fan1_current_rpm = (fan1_pulses * 60) / 2;  // 2 pulses per revolution
+        fan1_last_rpm_measurement = current_time;
         
-        last_measurement_time = current_time;
-        last_rpm_measurement = current_time;
+        Serial.printf("Fan 1 (Intake) RPM: %d\n", fan1_current_rpm);
+    }
+    
+    // Measure Fan 2 RPM every second  
+    if (current_time - fan2_last_rpm_measurement >= 1000) {
+        noInterrupts();
+        int fan2_pulses = fan2_pulse_count;
+        fan2_pulse_count = 0;
+        interrupts();
         
-        Serial.printf("Fan RPM: %d\n", current_rpm);
+        fan2_current_rpm = (fan2_pulses * 60) / 2;  // 2 pulses per revolution
+        fan2_last_rpm_measurement = current_time;
+        
+        Serial.printf("Fan 2 (Exhaust) RPM: %d\n", fan2_current_rpm);
     }
 }
 
@@ -144,12 +187,21 @@ void init_wifi() {
 String get_status_json() {
     JsonDocument doc;
     
-    doc["fan_speed"] = current_pwm_percent;
-    doc["fan_rpm"] = current_rpm;
+    // Dual Fan Status
+    doc["fan1_speed"] = fan1_current_pwm_percent;
+    doc["fan1_rpm"] = fan1_current_rpm;
+    doc["fan2_speed"] = fan2_current_pwm_percent; 
+    doc["fan2_rpm"] = fan2_current_rpm;
+    
+    // System Info
     doc["uptime"] = millis() / 1000;
     doc["board_mac"] = WiFi.macAddress();
     
-    // Add WiFi mode information
+    // Legacy single fan fields (for backward compatibility)
+    doc["fan_speed"] = fan1_current_pwm_percent;  // Default to Fan 1
+    doc["fan_rpm"] = fan1_current_rpm;           // Default to Fan 1
+    
+    // WiFi mode information
     if (ap_mode_active) {
         doc["wifi_mode"] = "Access Point";
         doc["wifi_network"] = ap_ssid;
@@ -184,17 +236,71 @@ void init_web_server() {
         request->send(200, "application/json", get_status_json());
     });
     
-    // API endpoint to set fan speed
+    // API endpoint to set fan speeds (dual fan support)
     server.on("/set_speed", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL, 
         [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
             JsonDocument doc;
             deserializeJson(doc, data);
             
+            JsonDocument response;
+            response["success"] = true;
+            
+            // Handle legacy single fan control (defaults to Fan 1)
+            if (doc.containsKey("speed")) {
+                int speed = doc["speed"];
+                set_fan1_speed(speed);
+                response["speed"] = speed;
+                response["fan"] = "fan1";
+            }
+            
+            // Handle individual fan control
+            if (doc.containsKey("fan1_speed")) {
+                int speed = doc["fan1_speed"];
+                set_fan1_speed(speed);
+                response["fan1_speed"] = speed;
+            }
+            
+            if (doc.containsKey("fan2_speed")) {
+                int speed = doc["fan2_speed"];
+                set_fan2_speed(speed);
+                response["fan2_speed"] = speed;
+            }
+            
+            String response_str;
+            serializeJson(response, response_str);
+            request->send(200, "application/json", response_str);
+        });
+    
+    // API endpoint for individual fan control
+    server.on("/set_fan1", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonDocument doc;
+            deserializeJson(doc, data);
+            
             int speed = doc["speed"];
-            set_fan_speed(speed);
+            set_fan1_speed(speed);
             
             JsonDocument response;
             response["success"] = true;
+            response["fan"] = "fan1";
+            response["speed"] = speed;
+            
+            String response_str;
+            serializeJson(response, response_str);
+            request->send(200, "application/json", response_str);
+        });
+        
+    server.on("/set_fan2", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonDocument doc;
+            deserializeJson(doc, data);
+            
+            int speed = doc["speed"];
+            set_fan2_speed(speed);
+            
+            JsonDocument response;
+            response["success"] = true;
+            response["fan"] = "fan2";
             response["speed"] = speed;
             
             String response_str;
@@ -213,8 +319,8 @@ void setup() {
     
     Serial.println("ESP32 Web Fan Controller Starting...");
     Serial.println("Board #1 - MAC: Expected 44:1d:64:f5:b4:84");
-    Serial.printf("Fan PWM: GPIO %d\n", FAN_PWM_GPIO);
-    Serial.printf("Fan Tacho: GPIO %d\n", FAN_TACHO_GPIO);
+    Serial.printf("Fan 1 PWM: GPIO %d | Fan 2 PWM: GPIO %d\n", FAN1_PWM_GPIO, FAN2_PWM_GPIO);
+    Serial.printf("Fan 1 Tacho: GPIO %d | Fan 2 Tacho: GPIO %d\n", FAN1_TACHO_GPIO, FAN2_TACHO_GPIO);
     Serial.println();
     
     // Initialize hardware
