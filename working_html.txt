@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>ESP32 Fan Controller</title>
+<style>body{font-family:Arial,sans-serif;background:#1e3c72;color:white;padding:20px}.container{max-width:600px;margin:0 auto;background:rgba(255,255,255,0.1);border-radius:10px;padding:20px}h1{text-align:center}#debug{background:rgba(255,0,0,0.3);padding:10px;margin:10px 0;border-radius:5px;font-size:12px}#status{background:rgba(0,0,0,0.3);padding:15px;margin:10px 0;border-radius:5px}.fan{background:rgba(255,255,255,0.1);margin:10px 0;padding:15px;border-radius:8px}.fan h3{margin:0 0 10px 0}.info{display:flex;justify-content:space-between;margin:5px 0}.buttons{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}.btn{background:rgba(255,255,255,0.2);border:none;color:white;padding:10px;border-radius:5px;cursor:pointer;font-weight:bold}.btn:hover{background:rgba(255,255,255,0.3)}.btn.active{background:rgba(0,255,0,0.5)}</style>
+</head>
+<body>
+<div class="container">
+<h1>ESP32 Fan Controller</h1>
+<div id="debug">Debug: Starting...</div>
+<div id="status">
+<div class="info"><span>WiFi:</span><span id="wifi">Loading...</span></div>
+<div class="info"><span>IP:</span><span id="ip">Loading...</span></div>
+<div class="info"><span>Uptime:</span><span id="uptime">Loading...</span></div>
+</div>
+<div class="fan">
+<h3>Fan 1 (GPIO 5)</h3>
+<div class="info"><span>Speed:</span><span id="fan1-speed">0%</span></div>
+<div class="info"><span>RPM:</span><span id="fan1-rpm">0</span></div>
+<div class="buttons">
+<button class="btn" onclick="setFan1(0)">0%</button>
+<button class="btn" onclick="setFan1(30)">30%</button>
+<button class="btn" onclick="setFan1(60)">60%</button>
+<button class="btn" onclick="setFan1(100)">100%</button>
+</div>
+</div>
+<div class="fan">
+<h3>Fan 2 (GPIO 21)</h3>
+<div class="info"><span>Speed:</span><span id="fan2-speed">0%</span></div>
+<div class="info"><span>RPM:</span><span id="fan2-rpm">0</span></div>
+<div class="buttons">
+<button class="btn" onclick="setFan2(0)">0%</button>
+<button class="btn" onclick="setFan2(30)">30%</button>
+<button class="btn" onclick="setFan2(60)">60%</button>
+<button class="btn" onclick="setFan2(100)">100%</button>
+</div>
+</div>
+</div>
+<script>
+function log(msg) {
+document.getElementById('debug').textContent = new Date().toLocaleTimeString() + ': ' + msg;
+console.log(msg);
+}
+function setFan1(speed) {
+log('Setting Fan 1 to ' + speed + '%');
+fetch('/set_fan1', {
+method: 'POST',
+headers: {'Content-Type': 'application/json'},
+body: JSON.stringify({speed: speed})
+}).then(r => r.json()).then(d => {
+if (d.success) {
+log('Fan 1 set to ' + speed + '%');
+updateStatus();
+}
+}).catch(e => log('Fan 1 Error: ' + e));
+}
+function setFan2(speed) {
+log('Setting Fan 2 to ' + speed + '%');
+fetch('/set_fan2', {
+method: 'POST',
+headers: {'Content-Type': 'application/json'},
+body: JSON.stringify({speed: speed})
+}).then(r => r.json()).then(d => {
+if (d.success) {
+log('Fan 2 set to ' + speed + '%');
+updateStatus();
+}
+}).catch(e => log('Fan 2 Error: ' + e));
+}
+function updateStatus() {
+log('Updating status...');
+fetch('/status').then(r => r.json()).then(d => {
+log('Status OK - Fan1: ' + d.fan1_speed + '%, Fan2: ' + d.fan2_speed + '%');
+document.getElementById('fan1-speed').textContent = d.fan1_speed + '%';
+document.getElementById('fan1-rpm').textContent = d.fan1_rpm;
+document.getElementById('fan2-speed').textContent = d.fan2_speed + '%';
+document.getElementById('fan2-rpm').textContent = d.fan2_rpm;
+document.getElementById('wifi').textContent = d.wifi_network;
+document.getElementById('ip').textContent = d.ip_address;
+document.getElementById('uptime').textContent = Math.floor(d.uptime/60) + 'm';
+}).catch(e => log('Status Error: ' + e));
+}
+log('JavaScript loaded');
+updateStatus();
+setInterval(updateStatus, 2000);
+</script>
+</body>
+</html>
