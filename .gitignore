@@ -1,0 +1,36 @@
+# PlatformIO
+.pio/
+.pioenvs/
+.piolibdeps/
+.vscode/
+.clang_complete
+.gcc-flags.json
+
+# Compiled files
+*.o
+*.elf
+*.bin
+*.map
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.bak
+*.log
+
+# Build artifacts
+build/
+dist/
+
+# ESP32 specific
+sdkconfig.old
