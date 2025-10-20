@@ -14,10 +14,10 @@ const char* ap_ssid = "ESP32-FanController";
 const char* ap_password = "fancontrol123";
 bool ap_mode_active = false;
 
-// Dual Fan Control GPIO Pins
-#define FAN1_PWM_GPIO           2   // Fan 1 (Intake) PWM output pin
+// Dual Fan Control GPIO Pins (Updated for reliable PWM)
+#define FAN1_PWM_GPIO           5   // Fan 1 (Intake) PWM output pin (GPIO 5 - safe for PWM)
 #define FAN1_TACHO_GPIO         18  // Fan 1 (Intake) Tacho input pin
-#define FAN2_PWM_GPIO           4   // Fan 2 (Exhaust) PWM output pin  
+#define FAN2_PWM_GPIO           21  // Fan 2 (Exhaust) PWM output pin (GPIO 21 - safe for PWM)
 #define FAN2_TACHO_GPIO         19  // Fan 2 (Exhaust) Tacho input pin
 
 // PWM Configuration
@@ -74,10 +74,14 @@ void set_fan1_speed(int percent) {
     if (percent > 100) percent = 100;
     
     int duty_cycle = (percent * 255) / 100;
+    
+    Serial.printf("🔧 Setting Fan 1 PWM: %d%% -> duty=%d on GPIO %d, Channel %d\n", 
+                  percent, duty_cycle, FAN1_PWM_GPIO, FAN1_PWM_CHANNEL);
+    
     ledcWrite(FAN1_PWM_CHANNEL, duty_cycle);
     
     fan1_current_pwm_percent = percent;
-    Serial.printf("Fan 1 (Intake) speed: %d%% (duty=%d)\n", percent, duty_cycle);
+    Serial.printf("✅ Fan 1 PWM set successfully\n");
 }
 
 void set_fan2_speed(int percent) {
@@ -85,10 +89,14 @@ void set_fan2_speed(int percent) {
     if (percent > 100) percent = 100;
     
     int duty_cycle = (percent * 255) / 100;
+    
+    Serial.printf("🔧 Setting Fan 2 PWM: %d%% -> duty=%d on GPIO %d, Channel %d\n", 
+                  percent, duty_cycle, FAN2_PWM_GPIO, FAN2_PWM_CHANNEL);
+    
     ledcWrite(FAN2_PWM_CHANNEL, duty_cycle);
     
     fan2_current_pwm_percent = percent;
-    Serial.printf("Fan 2 (Exhaust) speed: %d%% (duty=%d)\n", percent, duty_cycle);
+    Serial.printf("✅ Fan 2 PWM set successfully\n");
 }
 
 // ====== DUAL TACHO RPM MEASUREMENT ======
@@ -319,8 +327,10 @@ void setup() {
     
     Serial.println("ESP32 Web Fan Controller Starting...");
     Serial.println("Board #1 - MAC: Expected 44:1d:64:f5:b4:84");
-    Serial.printf("Fan 1 PWM: GPIO %d | Fan 2 PWM: GPIO %d\n", FAN1_PWM_GPIO, FAN2_PWM_GPIO);
+    Serial.println("🔧 GPIO PIN ASSIGNMENTS (Updated for reliable PWM):");
+    Serial.printf("Fan 1 PWM: GPIO %d (was GPIO 2) | Fan 2 PWM: GPIO %d (was GPIO 4)\n", FAN1_PWM_GPIO, FAN2_PWM_GPIO);
     Serial.printf("Fan 1 Tacho: GPIO %d | Fan 2 Tacho: GPIO %d\n", FAN1_TACHO_GPIO, FAN2_TACHO_GPIO);
+    Serial.println("Note: GPIO 2 & 4 have restrictions - using GPIO 5 & 21 for reliable PWM");
     Serial.println();
     
     // Initialize hardware
