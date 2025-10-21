@@ -47,6 +47,36 @@ Pin 3: Tacho Signal (Yellow) → GPIO 19
 Pin 4: PWM Control (Blue) → GPIO 21
 ```
 
+### ⚡ 12V Power Circuit with MOSFET Drivers
+
+The ESP32 outputs 3.3V PWM signals, but most PC fans require 12V PWM. Use IRF520 MOSFETs to level-shift:
+
+#### 📋 Circuit Documentation
+- **[Complete Circuit Diagram](MOSFET_Circuit_Diagram.md)** - Detailed technical schematic with component values
+- **[Simple Wiring Guide](Simple_Wiring_Diagram.txt)** - Easy-to-follow breadboard layout
+
+#### 🔧 Required Components (per fan)
+- **1x IRF520 N-Channel MOSFET** - Main switching element (TO-220 package)
+- **1x 220Ω Resistor** - Gate current limiting (ESP32 protection)  
+- **1x 10kΩ Resistor** - Gate pull-down (ensures OFF state)
+- **1x 1N4007 Diode** - Flyback protection (prevents voltage spikes)
+
+#### 🔌 Connection Summary
+```
+ESP32 GPIO 5/21 → 220Ω → IRF520 Gate → 10kΩ to GND
+12V Supply (+) → Fan Red Wire
+12V Supply (-) → Circuit Ground  
+IRF520 Drain → Fan Black Wire (PWM switched ground)
+IRF520 Source → Circuit Ground
+Fan Yellow → ESP32 GPIO 18/19 (Tacho - direct connection)
+```
+
+#### ⚡ Circuit Performance
+- **PWM Frequency**: 25kHz (silent operation)
+- **Resolution**: 8-bit (0-255, mapped to 0-100%)
+- **Current Handling**: Up to 9A per channel (typical fans: 0.1-2A)
+- **Power Dissipation**: ~0.6W per MOSFET at full load
+
 ## 📡 Network Configuration
 
 - **SSID**: HareNet
