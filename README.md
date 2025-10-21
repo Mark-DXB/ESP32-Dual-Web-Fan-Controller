@@ -32,19 +32,42 @@ GPIO 18 - Fan 1 (Intake) Tacho Input
 GPIO 19 - Fan 2 (Exhaust) Tacho Input
 ```
 
+### 🔑 **CRITICAL: 4-Pin Connector Identification**
+
+**For fans with all-black wires** - Use the **physical keying** to identify pins:
+
+```
+Fan Connector (looking at plastic housing):
+┌────────────────────────────┐
+│  □    □    □    □         │  ← 4 pins visible  
+│                           │
+│  ████ KEYING NOTCH        │  ← Deep notch on one side
+└────────────────────────────┘
+     ▲
+  PIN 1 SIDE (Ground)
+
+Pin Layout (keying side → far side):
+Pin 1: Ground (GND) - Connect to circuit ground
+Pin 2: +12V Power - Connect to 12V supply
+Pin 3: Tacho Signal - Connect to ESP32 GPIO 18/19  
+Pin 4: PWM Control - Connect to MOSFET drain
+```
+
+**📋 Complete Guide**: [Keyed_Connector_Pin_Identification.md](Keyed_Connector_Pin_Identification.md)
+
 ### Dual Fan Connection
 ```
 Fan 1 (Intake) - 4-pin Connector:
-Pin 1: Ground (Black)
-Pin 2: +12V Power (Red) 
-Pin 3: Tacho Signal (Yellow) → GPIO 18
-Pin 4: PWM Control (Blue) → GPIO 5
+Pin 1: Ground → Circuit GND
+Pin 2: +12V Power → 12V Supply
+Pin 3: Tacho Signal → ESP32 GPIO 18
+Pin 4: PWM Control → IRF520 #1 Drain (GPIO 5)
 
-Fan 2 (Exhaust) - 4-pin Connector:
-Pin 1: Ground (Black)
-Pin 2: +12V Power (Red) 
-Pin 3: Tacho Signal (Yellow) → GPIO 19
-Pin 4: PWM Control (Blue) → GPIO 21
+Fan 2 (Exhaust) - 4-pin Connector:  
+Pin 1: Ground → Circuit GND
+Pin 2: +12V Power → 12V Supply
+Pin 3: Tacho Signal → ESP32 GPIO 19
+Pin 4: PWM Control → IRF520 #2 Drain (GPIO 21)
 ```
 
 ### ⚡ 12V Power Circuit with MOSFET Drivers
