@@ -26,6 +26,12 @@ bool ap_mode_active = false;
 #define FAN1_PWM_CHANNEL        0      // LEDC channel for Fan 1
 #define FAN2_PWM_CHANNEL        1      // LEDC channel for Fan 2
 
+// Tachometer Configuration (Measured Values)
+// Standard assumption: 2 pulses per revolution
+// Actual measurement: Fan max 2300 RPM produces 70 Hz tachometer signal
+// Calculated PPR: 70 Hz / (2300 RPM / 60) = 1.83 pulses per revolution
+#define PULSES_PER_REVOLUTION   1.83   // Measured value for accurate RPM calculation
+
 // Global variables
 AsyncWebServer server(80);
 
@@ -113,7 +119,7 @@ void init_tacho_input() {
     pinMode(FAN2_TACHO_GPIO, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(FAN2_TACHO_GPIO), fan2_tacho_isr, RISING);
     
-    Serial.println("Dual Tacho measurement ready (2 pulses per revolution)");
+    Serial.printf("Dual Tacho measurement ready (%.2f pulses per revolution - measured)\n", PULSES_PER_REVOLUTION);
 }
 
 void measure_rpm() {
@@ -126,7 +132,7 @@ void measure_rpm() {
         fan1_pulse_count = 0;
         interrupts();
         
-        fan1_current_rpm = (fan1_pulses * 60) / 2;  // 2 pulses per revolution
+        fan1_current_rpm = (fan1_pulses * 60) / PULSES_PER_REVOLUTION;  // Measured PPR for accurate calculation
         fan1_last_rpm_measurement = current_time;
         
         Serial.printf("Fan 1 (Intake) RPM: %d\n", fan1_current_rpm);
@@ -139,7 +145,7 @@ void measure_rpm() {
         fan2_pulse_count = 0;
         interrupts();
         
-        fan2_current_rpm = (fan2_pulses * 60) / 2;  // 2 pulses per revolution
+        fan2_current_rpm = (fan2_pulses * 60) / PULSES_PER_REVOLUTION;  // Measured PPR for accurate calculation
         fan2_last_rpm_measurement = current_time;
         
         Serial.printf("Fan 2 (Exhaust) RPM: %d\n", fan2_current_rpm);
