@@ -32,6 +32,11 @@ bool ap_mode_active = false;
 // Calculated PPR: 70 Hz / (2300 RPM / 60) = 1.83 pulses per revolution
 #define PULSES_PER_REVOLUTION   1.83   // Measured value for accurate RPM calculation
 
+// Interrupt Debouncing Configuration
+// Minimum time between valid interrupts: 500µs (prevents signal bouncing)
+// Maximum theoretical frequency: 2kHz (well above typical fan speeds)
+#define DEBOUNCE_MICROS         500    // Microseconds between valid interrupts
+
 // Global variables
 AsyncWebServer server(80);
 
@@ -47,13 +52,35 @@ volatile int fan2_current_rpm = 0;
 volatile int fan2_current_pwm_percent = 0;
 volatile unsigned long fan2_last_rpm_measurement = 0;
 
-// Interrupt handlers for tacho pulses
+// Debugging variables for interrupt analysis
+volatile unsigned long fan1_last_interrupt_time = 0;
+volatile unsigned long fan2_last_interrupt_time = 0;
+volatile int fan1_bounce_count = 0;
+volatile int fan2_bounce_count = 0;
+
+// Interrupt handlers for tacho pulses with debouncing
 void IRAM_ATTR fan1_tacho_isr() {
-    fan1_pulse_count++;
+    unsigned long current_time = micros();
+    
+    // Debounce: Ignore interrupts within DEBOUNCE_MICROS (prevents bouncing)
+    if (current_time - fan1_last_interrupt_time > DEBOUNCE_MICROS) {
+        fan1_pulse_count++;
+        fan1_last_interrupt_time = current_time;
+    } else {
+        fan1_bounce_count++;  // Count bounced/ignored pulses
+    }
 }
 
 void IRAM_ATTR fan2_tacho_isr() {
-    fan2_pulse_count++;
+    unsigned long current_time = micros();
+    
+    // Debounce: Ignore interrupts within DEBOUNCE_MICROS (prevents bouncing)
+    if (current_time - fan2_last_interrupt_time > DEBOUNCE_MICROS) {
+        fan2_pulse_count++;
+        fan2_last_interrupt_time = current_time;
+    } else {
+        fan2_bounce_count++;  // Count bounced/ignored pulses
+    }
 }
 
 // ====== DUAL FAN PWM CONTROL ======
@@ -120,6 +147,8 @@ void init_tacho_input() {
     attachInterrupt(digitalPinToInterrupt(FAN2_TACHO_GPIO), fan2_tacho_isr, RISING);
     
     Serial.printf("Dual Tacho measurement ready (%.2f pulses per revolution - measured)\n", PULSES_PER_REVOLUTION);
+    Serial.printf("Debouncing enabled: %dµs minimum pulse width (%.1f kHz max frequency)\n", 
+                  DEBOUNCE_MICROS, 1000.0 / DEBOUNCE_MICROS);
 }
 
 void measure_rpm() {
@@ -135,7 +164,14 @@ void measure_rpm() {
         fan1_current_rpm = (fan1_pulses * 60) / PULSES_PER_REVOLUTION;  // Measured PPR for accurate calculation
         fan1_last_rpm_measurement = current_time;
         
-        Serial.printf("Fan 1 (Intake) RPM: %d\n", fan1_current_rpm);
+        // Debug output with bounce detection
+        noInterrupts();
+        int fan1_bounces = fan1_bounce_count;
+        fan1_bounce_count = 0;  // Reset bounce counter
+        interrupts();
+        
+        Serial.printf("Fan 1 (GPIO 18) RPM: %d | Pulses: %d | Bounces: %d | Freq: %.1f Hz\n", 
+                      fan1_current_rpm, fan1_pulses, fan1_bounces, fan1_pulses / 1.0);
     }
     
     // Measure Fan 2 RPM every second  
@@ -148,7 +184,14 @@ void measure_rpm() {
         fan2_current_rpm = (fan2_pulses * 60) / PULSES_PER_REVOLUTION;  // Measured PPR for accurate calculation
         fan2_last_rpm_measurement = current_time;
         
-        Serial.printf("Fan 2 (Exhaust) RPM: %d\n", fan2_current_rpm);
+        // Debug output with bounce detection
+        noInterrupts();
+        int fan2_bounces = fan2_bounce_count;
+        fan2_bounce_count = 0;  // Reset bounce counter
+        interrupts();
+        
+        Serial.printf("Fan 2 (GPIO 19) RPM: %d | Pulses: %d | Bounces: %d | Freq: %.1f Hz\n", 
+                      fan2_current_rpm, fan2_pulses, fan2_bounces, fan2_pulses / 1.0);
     }
 }
 
