@@ -72,8 +72,8 @@ CRGB fan1_leds[LEDS_PER_FAN];
 CRGB fan2_leds[LEDS_PER_FAN];
 
 // ARGB Control Variables  
-uint8_t fan1_red = 0, fan1_green = 100, fan1_blue = 255;     // Default: Light blue
-uint8_t fan2_red = 255, fan2_green = 100, fan2_blue = 0;     // Default: Orange
+uint8_t fan1_red = 0, fan1_green = 0, fan1_blue = 0;         // Default: Off (black)
+uint8_t fan2_red = 0, fan2_green = 0, fan2_blue = 0;         // Default: Off (black)
 uint8_t fan1_brightness = ARGB_BRIGHTNESS;
 uint8_t fan2_brightness = ARGB_BRIGHTNESS;
 uint8_t argb_effect = 0;  // 0=solid, 1=breathing, 2=rainbow, etc.
@@ -202,8 +202,12 @@ void set_fan1_color(uint8_t red, uint8_t green, uint8_t blue) {
     fan1_green = green; 
     fan1_blue = blue;
     
-    for (int i = 0; i < LEDS_PER_FAN; i++) {
-        fan1_leds[i] = CRGB(red, green, blue);
+    // Only update if we're in solid color mode (effect 0)
+    if (argb_effect == 0) {
+        for (int i = 0; i < LEDS_PER_FAN; i++) {
+            fan1_leds[i] = CRGB(red, green, blue);
+        }
+        FastLED.show(); // Actually update the LEDs!
     }
     
     Serial.printf("Fan 1 ARGB: RGB(%d,%d,%d)\n", red, green, blue);
@@ -214,8 +218,12 @@ void set_fan2_color(uint8_t red, uint8_t green, uint8_t blue) {
     fan2_green = green;
     fan2_blue = blue;
     
-    for (int i = 0; i < LEDS_PER_FAN; i++) {
-        fan2_leds[i] = CRGB(red, green, blue);
+    // Only update if we're in solid color mode (effect 0)
+    if (argb_effect == 0) {
+        for (int i = 0; i < LEDS_PER_FAN; i++) {
+            fan2_leds[i] = CRGB(red, green, blue);
+        }
+        FastLED.show(); // Actually update the LEDs!
     }
     
     Serial.printf("Fan 2 ARGB: RGB(%d,%d,%d)\n", red, green, blue);
@@ -224,10 +232,13 @@ void set_fan2_color(uint8_t red, uint8_t green, uint8_t blue) {
 void set_fan1_brightness(uint8_t brightness) {
     fan1_brightness = brightness;
     // Apply brightness by scaling colors
-    for (int i = 0; i < LEDS_PER_FAN; i++) {
-        fan1_leds[i] = CRGB((fan1_red * brightness) / 255, 
-                           (fan1_green * brightness) / 255, 
-                           (fan1_blue * brightness) / 255);
+    if (argb_effect == 0) {  // Only in solid color mode
+        for (int i = 0; i < LEDS_PER_FAN; i++) {
+            fan1_leds[i] = CRGB((fan1_red * brightness) / 255, 
+                               (fan1_green * brightness) / 255, 
+                               (fan1_blue * brightness) / 255);
+        }
+        FastLED.show(); // Actually update the LEDs!
     }
     Serial.printf("Fan 1 brightness: %d%%\n", (brightness * 100) / 255);
 }
@@ -235,10 +246,13 @@ void set_fan1_brightness(uint8_t brightness) {
 void set_fan2_brightness(uint8_t brightness) {
     fan2_brightness = brightness;
     // Apply brightness by scaling colors
-    for (int i = 0; i < LEDS_PER_FAN; i++) {
-        fan2_leds[i] = CRGB((fan2_red * brightness) / 255, 
-                           (fan2_green * brightness) / 255, 
-                           (fan2_blue * brightness) / 255);
+    if (argb_effect == 0) {  // Only in solid color mode
+        for (int i = 0; i < LEDS_PER_FAN; i++) {
+            fan2_leds[i] = CRGB((fan2_red * brightness) / 255, 
+                               (fan2_green * brightness) / 255, 
+                               (fan2_blue * brightness) / 255);
+        }
+        FastLED.show(); // Actually update the LEDs!
     }
     Serial.printf("Fan 2 brightness: %d%%\n", (brightness * 100) / 255);
 }
@@ -255,8 +269,16 @@ void update_argb_leds() {
             breathing_direction *= -1;
         }
         
-        set_fan1_brightness(breathing_value);
-        set_fan2_brightness(breathing_value);
+        // Apply breathing to current colors
+        for (int i = 0; i < LEDS_PER_FAN; i++) {
+            fan1_leds[i] = CRGB((fan1_red * breathing_value) / 255, 
+                               (fan1_green * breathing_value) / 255, 
+                               (fan1_blue * breathing_value) / 255);
+            fan2_leds[i] = CRGB((fan2_red * breathing_value) / 255, 
+                               (fan2_green * breathing_value) / 255, 
+                               (fan2_blue * breathing_value) / 255);
+        }
+        FastLED.show();
         
     } else if (argb_effect == 2) {
         // Rainbow effect
@@ -264,13 +286,12 @@ void update_argb_leds() {
         rainbow_hue += 2;
         
         for (int i = 0; i < LEDS_PER_FAN; i++) {
-            fan1_leds[i] = CHSV(rainbow_hue + (i * 20), 255, fan1_brightness);
-            fan2_leds[i] = CHSV(rainbow_hue + (i * 20) + 128, 255, fan2_brightness); // Offset for variety
+            fan1_leds[i] = CHSV(rainbow_hue + (i * 20), 255, 200);
+            fan2_leds[i] = CHSV(rainbow_hue + (i * 20) + 128, 255, 200); // Offset for variety
         }
+        FastLED.show();
     }
-    // Effect 0 (solid) is handled by set_fanX_color functions
-    
-    FastLED.show();
+    // Effect 0 (solid) is handled by set_fanX_color functions - no need to call FastLED.show() here
 }
 
 void measure_rpm() {
