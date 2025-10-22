@@ -1,6 +1,7 @@
 #include <WiFi.h>
 #include <ESPAsyncWebServer.h>
 #include <ArduinoJson.h>
+#include <FastLED.h>
 
 // ====== CONFIGURATION FOR BOARD #1 ======
 // Board #1 from catalog: ESP32 with MAC 44:1d:64:f5:b4:84
@@ -37,6 +38,14 @@ bool ap_mode_active = false;
 // Maximum theoretical frequency: 2kHz (well above typical fan speeds)
 #define DEBOUNCE_MICROS         500    // Microseconds between valid interrupts
 
+// ARGB LED Configuration (Confirmed 3-wire ARGB fans)
+#define FAN1_ARGB_GPIO          16     // Fan 1 ARGB data pin
+#define FAN2_ARGB_GPIO          17     // Fan 2 ARGB data pin  
+#define LEDS_PER_FAN            12     // Estimated LED count per fan (adjust based on actual count)
+#define ARGB_BRIGHTNESS         50     // Default brightness (0-255)
+#define ARGB_CHIPSET            WS2812B // Standard ARGB chipset
+#define ARGB_COLOR_ORDER        GRB     // Standard color order for WS2812B
+
 // Global variables
 AsyncWebServer server(80);
 
@@ -57,6 +66,24 @@ volatile unsigned long fan1_last_interrupt_time = 0;
 volatile unsigned long fan2_last_interrupt_time = 0;
 volatile int fan1_bounce_count = 0;
 volatile int fan2_bounce_count = 0;
+
+// ARGB LED Arrays and Control Variables
+CRGB fan1_leds[LEDS_PER_FAN];
+CRGB fan2_leds[LEDS_PER_FAN];
+
+// ARGB Control Variables  
+uint8_t fan1_red = 0, fan1_green = 100, fan1_blue = 255;     // Default: Light blue
+uint8_t fan2_red = 255, fan2_green = 100, fan2_blue = 0;     // Default: Orange
+uint8_t fan1_brightness = ARGB_BRIGHTNESS;
+uint8_t fan2_brightness = ARGB_BRIGHTNESS;
+uint8_t argb_effect = 0;  // 0=solid, 1=breathing, 2=rainbow, etc.
+
+// Forward declarations for ARGB functions
+void set_fan1_color(uint8_t red, uint8_t green, uint8_t blue);
+void set_fan2_color(uint8_t red, uint8_t green, uint8_t blue);
+void set_fan1_brightness(uint8_t brightness);
+void set_fan2_brightness(uint8_t brightness);
+void update_argb_leds();
 
 // Interrupt handlers for tacho pulses with debouncing
 void IRAM_ATTR fan1_tacho_isr() {
@@ -149,6 +176,101 @@ void init_tacho_input() {
     Serial.printf("Dual Tacho measurement ready (%.2f pulses per revolution - measured)\n", PULSES_PER_REVOLUTION);
     Serial.printf("Debouncing enabled: %dµs minimum pulse width (%.1f kHz max frequency)\n", 
                   DEBOUNCE_MICROS, 1000.0 / DEBOUNCE_MICROS);
+}
+
+// ====== ARGB LED CONTROL ======
+void init_argb() {
+    Serial.println("Initializing ARGB LED control...");
+    
+    // Initialize FastLED for both fans
+    FastLED.addLeds<ARGB_CHIPSET, FAN1_ARGB_GPIO, ARGB_COLOR_ORDER>(fan1_leds, LEDS_PER_FAN);
+    FastLED.addLeds<ARGB_CHIPSET, FAN2_ARGB_GPIO, ARGB_COLOR_ORDER>(fan2_leds, LEDS_PER_FAN);
+    
+    // Set global brightness
+    FastLED.setBrightness(ARGB_BRIGHTNESS);
+    
+    // Set initial colors (different for each fan for easy identification)
+    set_fan1_color(fan1_red, fan1_green, fan1_blue);
+    set_fan2_color(fan2_red, fan2_green, fan2_blue);
+    
+    Serial.printf("ARGB initialized: GPIO %d (Fan1), GPIO %d (Fan2), %d LEDs per fan\n", 
+                  FAN1_ARGB_GPIO, FAN2_ARGB_GPIO, LEDS_PER_FAN);
+}
+
+void set_fan1_color(uint8_t red, uint8_t green, uint8_t blue) {
+    fan1_red = red;
+    fan1_green = green; 
+    fan1_blue = blue;
+    
+    for (int i = 0; i < LEDS_PER_FAN; i++) {
+        fan1_leds[i] = CRGB(red, green, blue);
+    }
+    
+    Serial.printf("Fan 1 ARGB: RGB(%d,%d,%d)\n", red, green, blue);
+}
+
+void set_fan2_color(uint8_t red, uint8_t green, uint8_t blue) {
+    fan2_red = red;
+    fan2_green = green;
+    fan2_blue = blue;
+    
+    for (int i = 0; i < LEDS_PER_FAN; i++) {
+        fan2_leds[i] = CRGB(red, green, blue);
+    }
+    
+    Serial.printf("Fan 2 ARGB: RGB(%d,%d,%d)\n", red, green, blue);
+}
+
+void set_fan1_brightness(uint8_t brightness) {
+    fan1_brightness = brightness;
+    // Apply brightness by scaling colors
+    for (int i = 0; i < LEDS_PER_FAN; i++) {
+        fan1_leds[i] = CRGB((fan1_red * brightness) / 255, 
+                           (fan1_green * brightness) / 255, 
+                           (fan1_blue * brightness) / 255);
+    }
+    Serial.printf("Fan 1 brightness: %d%%\n", (brightness * 100) / 255);
+}
+
+void set_fan2_brightness(uint8_t brightness) {
+    fan2_brightness = brightness;
+    // Apply brightness by scaling colors
+    for (int i = 0; i < LEDS_PER_FAN; i++) {
+        fan2_leds[i] = CRGB((fan2_red * brightness) / 255, 
+                           (fan2_green * brightness) / 255, 
+                           (fan2_blue * brightness) / 255);
+    }
+    Serial.printf("Fan 2 brightness: %d%%\n", (brightness * 100) / 255);
+}
+
+void update_argb_leds() {
+    // Update LED effects based on current mode
+    if (argb_effect == 1) {
+        // Breathing effect
+        static uint8_t breathing_value = 0;
+        static int8_t breathing_direction = 1;
+        
+        breathing_value += breathing_direction * 2;
+        if (breathing_value >= 255 || breathing_value <= 50) {
+            breathing_direction *= -1;
+        }
+        
+        set_fan1_brightness(breathing_value);
+        set_fan2_brightness(breathing_value);
+        
+    } else if (argb_effect == 2) {
+        // Rainbow effect
+        static uint8_t rainbow_hue = 0;
+        rainbow_hue += 2;
+        
+        for (int i = 0; i < LEDS_PER_FAN; i++) {
+            fan1_leds[i] = CHSV(rainbow_hue + (i * 20), 255, fan1_brightness);
+            fan2_leds[i] = CHSV(rainbow_hue + (i * 20) + 128, 255, fan2_brightness); // Offset for variety
+        }
+    }
+    // Effect 0 (solid) is handled by set_fanX_color functions
+    
+    FastLED.show();
 }
 
 void measure_rpm() {
@@ -253,6 +375,17 @@ String get_status_json() {
     // System Info
     doc["uptime"] = millis() / 1000;
     doc["board_mac"] = WiFi.macAddress();
+    
+    // ARGB LED Status
+    doc["fan1_red"] = fan1_red;
+    doc["fan1_green"] = fan1_green;
+    doc["fan1_blue"] = fan1_blue;
+    doc["fan1_brightness"] = (fan1_brightness * 100) / 255;  // Convert to percentage
+    doc["fan2_red"] = fan2_red;
+    doc["fan2_green"] = fan2_green;
+    doc["fan2_blue"] = fan2_blue;
+    doc["fan2_brightness"] = (fan2_brightness * 100) / 255;  // Convert to percentage
+    doc["argb_effect"] = argb_effect;
     
     // Legacy single fan fields (for backward compatibility)
     doc["fan_speed"] = fan1_current_pwm_percent;  // Default to Fan 1
@@ -364,6 +497,118 @@ void init_web_server() {
             serializeJson(response, response_str);
             request->send(200, "application/json", response_str);
         });
+
+    // ====== ARGB CONTROL ENDPOINTS ======
+    
+    // Fan 1 ARGB Color Control
+    server.on("/set_fan1_color", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonDocument doc;
+            deserializeJson(doc, data);
+            
+            uint8_t red = doc["red"];
+            uint8_t green = doc["green"];
+            uint8_t blue = doc["blue"];
+            
+            set_fan1_color(red, green, blue);
+            
+            JsonDocument response;
+            response["success"] = true;
+            response["fan"] = "fan1";
+            response["red"] = red;
+            response["green"] = green; 
+            response["blue"] = blue;
+            
+            String response_str;
+            serializeJson(response, response_str);
+            request->send(200, "application/json", response_str);
+        });
+    
+    // Fan 2 ARGB Color Control  
+    server.on("/set_fan2_color", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonDocument doc;
+            deserializeJson(doc, data);
+            
+            uint8_t red = doc["red"];
+            uint8_t green = doc["green"];
+            uint8_t blue = doc["blue"];
+            
+            set_fan2_color(red, green, blue);
+            
+            JsonDocument response;
+            response["success"] = true;
+            response["fan"] = "fan2";
+            response["red"] = red;
+            response["green"] = green;
+            response["blue"] = blue;
+            
+            String response_str;
+            serializeJson(response, response_str);
+            request->send(200, "application/json", response_str);
+        });
+
+    // Fan 1 Brightness Control
+    server.on("/set_fan1_brightness", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonDocument doc;
+            deserializeJson(doc, data);
+            
+            int brightness_percent = doc["brightness"];
+            uint8_t brightness = (brightness_percent * 255) / 100;  // Convert percentage to 0-255
+            
+            set_fan1_brightness(brightness);
+            
+            JsonDocument response;
+            response["success"] = true;
+            response["fan"] = "fan1";
+            response["brightness"] = brightness_percent;
+            
+            String response_str;
+            serializeJson(response, response_str);
+            request->send(200, "application/json", response_str);
+        });
+
+    // Fan 2 Brightness Control
+    server.on("/set_fan2_brightness", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonDocument doc;
+            deserializeJson(doc, data);
+            
+            int brightness_percent = doc["brightness"];
+            uint8_t brightness = (brightness_percent * 255) / 100;  // Convert percentage to 0-255
+            
+            set_fan2_brightness(brightness);
+            
+            JsonDocument response;
+            response["success"] = true;
+            response["fan"] = "fan2";  
+            response["brightness"] = brightness_percent;
+            
+            String response_str;
+            serializeJson(response, response_str);
+            request->send(200, "application/json", response_str);
+        });
+
+    // ARGB Effect Control
+    server.on("/set_argb_effect", HTTP_POST, [](AsyncWebServerRequest *request) {}, NULL,
+        [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            JsonDocument doc;
+            deserializeJson(doc, data);
+            
+            int effect = doc["effect"];
+            argb_effect = effect;
+            
+            Serial.printf("ARGB effect changed to: %d\n", effect);
+            
+            JsonDocument response;
+            response["success"] = true;
+            response["effect"] = effect;
+            
+            String response_str;
+            serializeJson(response, response_str);
+            request->send(200, "application/json", response_str);
+        });
     
     server.begin();
     Serial.printf("Web Server started on http://%s\n", WiFi.localIP().toString().c_str());
@@ -385,6 +630,7 @@ void setup() {
     // Initialize hardware
     init_fan_pwm();
     init_tacho_input();
+    init_argb();  // Initialize ARGB LED control
     
     // Connect to WiFi
     init_wifi();
@@ -413,6 +659,9 @@ void setup() {
 void loop() {
     // Measure RPM continuously
     measure_rpm();
+    
+    // Update ARGB LED effects
+    update_argb_leds();
     
     // Small delay to prevent overwhelming the system
     delay(100);
